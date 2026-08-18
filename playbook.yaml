@@ -1,0 +1,34 @@
+- name: Set up NUC for polymetis
+  hosts: nuc
+  become: true
+
+  tasks:
+    - name: Enable the real time repo
+      community.general.dnf_config_manager:
+        name: rt
+        state: enabled
+
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - git
+          - podman
+          - kernel-rt
+          - rt-tests
+        state: present
+
+    - name: Clone or update Basis' droid fork
+      ansible.builtin.git:
+        repo: 'https://github.com/BasisResearch/droid'
+        dest: '/var/lib/droid'
+        clone: yes
+        update: yes
+
+    - name: Build the image
+      containers.podman.podman_image:
+        name: polymetis
+        path: /var/lib/droid
+        build:
+          file: /var/lib/droid/.docker/nuc/Dockerfile.nuc
+
+    - name: Configure the container quadlet
