@@ -7,6 +7,21 @@
       community.general.dnf_config_manager:
         name: rt
         state: enabled
+      notify: reboot system
+
+    - name: Configure subordinate UIDs for user
+      ansible.builtin.lineinfile:
+        path: /etc/subuid
+        line: "containers:100000:1000000"
+        create: yes
+        mode: '0644'
+
+    - name: Configure subordinate GIDs for user
+      ansible.builtin.lineinfile:
+        path: /etc/subgid
+        line: "containers:100000:1000000"
+        create: yes
+        mode: '0644'
 
     - name: Install system dependencies
       ansible.builtin.dnf:
@@ -16,11 +31,15 @@
           - kernel-rt
           - rt-tests
         state: present
+      notify: reboot system
 
     - name: Clone or update Basis' droid fork
       ansible.builtin.git:
         repo: 'https://github.com/BasisResearch/droid'
         dest: '/var/lib/droid'
+        single_branch: yes
+        version: docker
+        recursive: yes
         clone: yes
         update: yes
 
@@ -32,3 +51,44 @@
           file: /var/lib/droid/.docker/nuc/Dockerfile.nuc
 
     - name: Configure the container quadlet
+      containers.podman.podman_container:
+        name: polymetis
+        image: localhost/polymetis:latest
+        state: quadlet
+        quadlet_file_mode: '0640'
+        network: host
+        cap_add:
+          - SYS_NICE
+        device:
+          - /dev/cpu_dma_latency
+        ulimit:
+          - 'rtprio=99'
+          - 'memlock=-1:-1'
+        userns: auto
+        mount:
+          - 'type=bind,source=/var/lib/droid/droid/misc/parameters.py,destination=/app/droid/misc/parameters.py,ro=true,relabel=private'
+        stop_timeout: 10
+        quadlet_options:
+          - |
+            [Unit]
+            Description=DROID Franka Panda control server
+            Wants=network-online.target
+            After=network-online.target
+          - |
+            [Service]
+            Restart=always
+            # must exceed StopTimeout so systemd doesn't kill podman mid-stop
+            TimeoutStopSec=30
+          - |
+            [Install]
+            WantedBy=multi-user.target
+
+    - name: Start the polymetis service
+      ansible.builtin.systemd_service:
+        name: polymetis.service
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: reboot system
+      ansible.builtin.reboot:
