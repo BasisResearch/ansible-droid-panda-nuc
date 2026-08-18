@@ -7,19 +7,27 @@
       community.general.dnf_config_manager:
         name: rt
         state: enabled
+
+    - name: Install the real time kernel
+      ansible.builtin.dnf:
+        name:
+          - kernel-rt
+          - rt-tests
+        state: present
       notify: reboot system
+
 
     - name: Configure subordinate UIDs for user
       ansible.builtin.lineinfile:
         path: /etc/subuid
-        line: "containers:100000:1000000"
+        line: "containers:2147483648:1000000"
         create: yes
         mode: '0644'
 
     - name: Configure subordinate GIDs for user
       ansible.builtin.lineinfile:
         path: /etc/subgid
-        line: "containers:100000:1000000"
+        line: "containers:2147483648:1000000"
         create: yes
         mode: '0644'
 
@@ -28,10 +36,7 @@
         name:
           - git
           - podman
-          - kernel-rt
-          - rt-tests
         state: present
-      notify: reboot system
 
     - name: Clone or update Basis' droid fork
       ansible.builtin.git:
@@ -86,7 +91,7 @@
     - name: Start the polymetis service
       ansible.builtin.systemd_service:
         name: polymetis.service
-        state: started
+        state: restarted
         daemon_reload: true
 
   handlers:
