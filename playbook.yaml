@@ -12,7 +12,6 @@
       ansible.builtin.dnf:
         name:
           - kernel-rt
-          - rt-tests
         state: present
       notify: reboot system
 
@@ -37,6 +36,17 @@
           - git
           - podman
         state: present
+
+    - name: Open firewall ports for polymetis
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop:
+        - 4242
+        - 50051
+        - 50052
 
     - name: Clone or update Basis' droid fork
       ansible.builtin.git:
