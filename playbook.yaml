@@ -109,6 +109,8 @@
         network: host
         cap_add:
           - SYS_NICE
+        env:
+          ROBOT_IP: "172.16.0.4"
         device:
           - /dev/cpu_dma_latency
         ulimit:
@@ -117,6 +119,9 @@
         userns: auto
         entrypoint: '["/tini", "--"]'
         command: "{{ item.exec }}"
+        # note: the parameter.py need to have hte ROBOT_IP synced up
+        # todo: inline parameters.py here and have both the
+        # environment variable and the parameters.py refer to that var
         mount:
           - 'type=bind,source=/var/lib/droid/droid/misc/parameters.py,destination=/app/droid/misc/parameters.py,ro=true,relabel=private'
         stop_timeout: 10
@@ -126,14 +131,14 @@
             Description={{ item.description }}
             Wants=network-online.target
             After=network-online.target
+            # note: the infinite retry is bad. so i disabled it and
+            # refactored droid side to survive even when the robot is down
+
             # retry forever, never give up due to start rate limiting
-            StartLimitIntervalSec=0
+            # StartLimitIntervalSec=0
           - |
             [Service]
-            Restart=always
-            # must exceed StopTimeout so systemd doesn't kill podman mid-stop
-            TimeoutStopSec=30
-            RestartSec=30
+            Restart=on-failure
           - |
             [Install]
             WantedBy=multi-user.target
