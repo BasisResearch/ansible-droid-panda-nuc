@@ -1,3 +1,5 @@
+# known to work for almalinux 10
+
 - name: Set up NUC for polymetis
   hosts: nuc
   become: true
@@ -13,7 +15,11 @@
         name:
           - kernel-rt
         state: present
-      notify: reboot system
+
+    # note: i've tried automating the realtime kernel
+    # as the default but it's quite non-trivial to setup.
+    # look up rhel 10 documentation about installing kernels
+    # and do that manually
 
     - name: Run pending reboot handlers now
       ansible.builtin.meta: flush_handlers
@@ -39,16 +45,21 @@
           - podman
         state: present
 
-    - name: Open firewall ports for polymetis
-      ansible.posix.firewalld:
-        port: "{{ item }}/tcp"
-        permanent: true
-        immediate: true
-        state: enabled
-      loop:
-        - 4242
-        - 50051
-        - 50052
+    # note: the following configuration is not gonna work
+    # because the controller sends an unsolicited packet
+    # whose destination part i have not figured out.
+    # it's probably the easiest to simply add the ethernet card
+    # (not the wireless one) to trusted zone through firewalld
+    # - name: Open firewall ports for polymetis
+    #   ansible.posix.firewalld:
+    #     port: "{{ item }}/tcp"
+    #     permanent: true
+    #     immediate: true
+    #     state: enabled
+    #   loop:
+    #     - 4242
+    #     - 50051
+    #     - 50052
 
     - name: Clone or update Basis' droid fork
       ansible.builtin.git:
@@ -106,6 +117,6 @@
         state: restarted
         daemon_reload: true
 
-  handlers:
-    - name: reboot system
-      ansible.builtin.reboot:
+  # handlers:
+  #   - name: reboot system
+  #     ansible.builtin.reboot:
