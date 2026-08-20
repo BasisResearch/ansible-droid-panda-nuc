@@ -91,7 +91,12 @@
       containers.podman.podman_image:
         name: polymetis
         path: /var/lib/droid
-        force: true
+        # note: if you pulled the repo manually on the NUC, the
+        # clone command may return false for the changed flag.
+        # in that case, replace the following with force: true
+        # to force rebuild. the nice thing is that it won't rebuild
+        # everything from scratch, but it might still take a while
+        force: "{{ droid_repo.changed }}"
         build:
           file: /var/lib/droid/.docker/nuc/Dockerfile.nuc
 
