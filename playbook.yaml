@@ -4,6 +4,21 @@
   hosts: nuc
   become: true
 
+
+  vars:
+    droid_units:
+      - name: polymetis
+        exec: micromamba run -r /opt/micromamba -n polymetis-local python /app/scripts/server/run_server.py
+        description: "DROID Franka Panda control server"
+
+      - name: droid-robot
+        exec: /app/droid/franka/launch_robot.sh
+        description: "DROID Franka Panda arm"
+
+      - name: droid-gripper
+        exec: /app/droid/franka/launch_gripper.sh
+        description: "DROID Franka Panda gripper"
+
   tasks:
     - name: Enable the real time repo
       community.general.dnf_config_manager:
@@ -80,7 +95,7 @@
 
     - name: Configure the container quadlet
       containers.podman.podman_container:
-        name: polymetis
+        name: "{{ item.name }}"
         image: localhost/polymetis:latest
         state: quadlet
         quadlet_file_mode: '0640'
@@ -93,29 +108,38 @@
           - 'rtprio=99'
           - 'memlock=-1:-1'
         userns: auto
+        entrypoint: '["tini", "--"]'
+        command: "{{ item.exec }}"
         mount:
           - 'type=bind,source=/var/lib/droid/droid/misc/parameters.py,destination=/app/droid/misc/parameters.py,ro=true,relabel=private'
         stop_timeout: 10
         quadlet_options:
           - |
             [Unit]
-            Description=DROID Franka Panda control server
+            Description={{ item.description }}
             Wants=network-online.target
             After=network-online.target
+            # retry forever, never give up due to start rate limiting
+            StartLimitIntervalSec=0
           - |
             [Service]
             Restart=always
             # must exceed StopTimeout so systemd doesn't kill podman mid-stop
             TimeoutStopSec=30
+            RestartSec=30
           - |
             [Install]
             WantedBy=multi-user.target
 
-    - name: Start the polymetis service
+      loop: "{{ droid_units }}"
+
+
+    - name: Start the polymetis services
       ansible.builtin.systemd_service:
-        name: polymetis.service
+        name: "{{ item.name }}.service"
         state: restarted
         daemon_reload: true
+      loop: "{{ droid_units }}"
 
   # handlers:
   #   - name: reboot system
