@@ -85,11 +85,13 @@
         recursive: yes
         clone: yes
         update: yes
+      register: droid_repo
 
     - name: Build the image
       containers.podman.podman_image:
         name: polymetis
         path: /var/lib/droid
+        force: true
         build:
           file: /var/lib/droid/.docker/nuc/Dockerfile.nuc
 
@@ -108,7 +110,7 @@
           - 'rtprio=99'
           - 'memlock=-1:-1'
         userns: auto
-        entrypoint: '["tini", "--"]'
+        entrypoint: '["/tini", "--"]'
         command: "{{ item.exec }}"
         mount:
           - 'type=bind,source=/var/lib/droid/droid/misc/parameters.py,destination=/app/droid/misc/parameters.py,ro=true,relabel=private'
