@@ -8,10 +8,16 @@
   vars:
     robot_ip: "172.16.0.4"
 
+    # cpus must stay within the isolated cores (tuned realtime profile,
+    # isolated_cores=4-7; CPU 0 is the housekeeping core) and must not
+    # overlap between units: isolated cores are not load-balanced, so
+    # each unit owns its slice outright. droid-robot runs the 1 kHz
+    # libfranka FCI loop and gets the biggest share.
     droid_units:
       - name: polymetis
         exec: micromamba run -r /opt/micromamba -n polymetis-local python /app/scripts/server/run_server.py
         description: "DROID Franka Panda control server"
+        cpus: "4-5"
 
       # the launch_*.sh wrappers read ROBOT_IP from the environment and
       # feed it to both the supervisor's probe and the hydra conf override,
@@ -19,10 +25,12 @@
       - name: droid-robot
         exec: /app/droid/franka/launch_robot.sh
         description: "DROID Franka Panda arm"
+        cpus: "6"
 
       - name: droid-gripper
         exec: /app/droid/franka/launch_gripper.sh
         description: "DROID Franka Panda gripper"
+        cpus: "7"
 
   tasks:
     - name: Enable the real time repo
@@ -118,6 +126,7 @@
           ROBOT_IP: "{{ robot_ip }}"
         device:
           - /dev/cpu_dma_latency
+        cpuset_cpus: "{{ item.cpus }}"
         ulimit:
           - 'rtprio=99'
           - 'memlock=-1:-1'
