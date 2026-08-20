@@ -6,11 +6,16 @@
 
 
   vars:
+    robot_ip: "172.16.0.4"
+
     droid_units:
       - name: polymetis
         exec: micromamba run -r /opt/micromamba -n polymetis-local python /app/scripts/server/run_server.py
         description: "DROID Franka Panda control server"
 
+      # the launch_*.sh wrappers read ROBOT_IP from the environment and
+      # feed it to both the supervisor's probe and the hydra conf override,
+      # so the env var set below is the single knob
       - name: droid-robot
         exec: /app/droid/franka/launch_robot.sh
         description: "DROID Franka Panda arm"
@@ -110,7 +115,7 @@
         cap_add:
           - SYS_NICE
         env:
-          ROBOT_IP: "172.16.0.4"
+          ROBOT_IP: "{{ robot_ip }}"
         device:
           - /dev/cpu_dma_latency
         ulimit:
@@ -119,11 +124,6 @@
         userns: auto
         entrypoint: '["/tini", "--"]'
         command: "{{ item.exec }}"
-        # note: the parameter.py need to have hte ROBOT_IP synced up
-        # todo: inline parameters.py here and have both the
-        # environment variable and the parameters.py refer to that var
-        mount:
-          - 'type=bind,source=/var/lib/droid/droid/misc/parameters.py,destination=/app/droid/misc/parameters.py,ro=true,relabel=private'
         stop_timeout: 10
         quadlet_options:
           - |
