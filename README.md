@@ -32,11 +32,6 @@ The `ssh` port should be opened by default so you don't need to do anything with
 
 To do that, run `ip link show`, and find a device name that starts with `enp*`. On the Intel NUC, the device is named `enp89s0` but it might be something else if you buy a different brand of NUC or have a newer version of Linux. (The one that starts with `w` is likely the WLAN device that you should leave alone)
 
-Next, run the following command to add the device to the trusted zone after replacing `enp89s0` with your actual device name.
-```sh
-sudo firewall-cmd --zone=trusted --change-interface=enp89s0
-```
-
 
 ## Running the ansible playbook
 Before you can run the ansible playbook, create a file named `inventory.ini` in the project root with the following content.
