@@ -38,16 +38,41 @@
         name: rt
         state: enabled
 
-    - name: Install the real time kernel
+    - name: Make RT the default for future kernel updates
+      lineinfile:
+        path: /etc/sysconfig/kernel
+        regexp: '^DEFAULTKERNEL='
+        line: 'DEFAULTKERNEL=kernel-rt-core'
+
+    - name: Install the real time kernel and tuned
       ansible.builtin.dnf:
         name:
           - kernel-rt
+          - tuned
+          - tuned-profiles-realtime
         state: present
+      notify: reboot system
 
-    # note: i've tried automating the realtime kernel
-    # as the default but it's quite non-trivial to setup.
-    # look up rhel 10 documentation about installing kernels
-    # and do that manually
+    - name: Enable tuned
+      service:
+        name: tuned
+        state: started
+        enabled: true
+
+    - name: Check active profile
+      command: tuned-adm active
+      register: tuned_active
+      changed_when: false
+
+    - name: Copy over the tuned configuration file
+      ansible.builtin.copy:
+        src: realtime-variables.conf
+        dest: /etc/tuned/realtime-variables.conf
+
+    - name: Activate realtime profile
+      command: tuned-adm profile realtime
+      when: "'realtime' not in tuned_active.stdout"
+      notify: reboot system
 
     - name: Run pending reboot handlers now
       ansible.builtin.meta: flush_handlers
@@ -162,6 +187,6 @@
         daemon_reload: true
       loop: "{{ droid_units }}"
 
-  # handlers:
-  #   - name: reboot system
-  #     ansible.builtin.reboot:
+  handlers:
+    - name: reboot system
+      ansible.builtin.reboot:
