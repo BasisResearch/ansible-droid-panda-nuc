@@ -8,11 +8,6 @@
   vars:
     robot_ip: "172.16.0.4"
 
-    # cpus must stay within the isolated cores (tuned realtime profile,
-    # isolated_cores=4-7; CPU 0 is the housekeeping core) and must not
-    # overlap between units: isolated cores are not load-balanced, so
-    # each unit owns its slice outright. droid-robot runs the 1 kHz
-    # libfranka FCI loop and gets the biggest share.
     droid_units:
       - name: polymetis
         exec: micromamba run -r /opt/micromamba -n polymetis-local python /app/scripts/server/run_server.py
@@ -68,10 +63,14 @@
       ansible.builtin.copy:
         src: realtime-variables.conf
         dest: /etc/tuned/realtime-variables.conf
+      register: tuned_variables
 
+    # re-apply the profile when the variables file changed, even if the
+    # profile is already active, so a new isolated_cores value reaches
+    # the kernel cmdline
     - name: Activate realtime profile
       command: tuned-adm profile realtime
-      when: "'realtime' not in tuned_active.stdout"
+      when: "'realtime' not in tuned_active.stdout or tuned_variables.changed"
       notify: reboot system
 
     - name: Run pending reboot handlers now
@@ -80,6 +79,7 @@
     - name: Configure subordinate UIDs for user
       ansible.builtin.lineinfile:
         path: /etc/subuid
+        regexp: '^containers:'
         line: "containers:2147483648:1000000"
         create: yes
         mode: '0644'
@@ -87,6 +87,7 @@
     - name: Configure subordinate GIDs for user
       ansible.builtin.lineinfile:
         path: /etc/subgid
+        regexp: '^containers:'
         line: "containers:2147483648:1000000"
         create: yes
         mode: '0644'
@@ -98,21 +99,24 @@
           - podman
         state: present
 
-    # note: the following configuration is not gonna work
-    # because the controller sends an unsolicited packet
-    # whose destination part i have not figured out.
-    # it's probably the easiest to simply add the ethernet card
-    # (not the wireless one) to trusted zone through firewalld
-    # - name: Open firewall ports for polymetis
-    #   ansible.posix.firewalld:
-    #     port: "{{ item }}/tcp"
-    #     permanent: true
-    #     immediate: true
-    #     state: enabled
-    #   loop:
-    #     - 4242
-    #     - 50051
-    #     - 50052
+    # we need to trust wired interfaces to cope with the unsolicited packets from the controller box
+    - name: Find the wired ethernet interfaces
+      ansible.builtin.set_fact:
+        wired_interfaces: "{{ ansible_facts.interfaces | select('match', '^en') | list }}"
+
+    - name: Check that a wired interface exists
+      ansible.builtin.assert:
+        that: wired_interfaces | length > 0
+        fail_msg: "no en* interface found, cannot open the firewall towards the robot"
+
+    - name: Add the wired interfaces to the trusted firewall zone
+      ansible.posix.firewalld:
+        zone: trusted
+        interface: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ wired_interfaces }}"
 
     - name: Clone or update Basis' droid fork
       ansible.builtin.git:
@@ -137,13 +141,13 @@
         force: "{{ droid_repo.changed }}"
         build:
           file: /var/lib/droid/.docker/nuc/Dockerfile.nuc
+      register: polymetis_image
 
     - name: Configure the container quadlet
       containers.podman.podman_container:
         name: "{{ item.name }}"
         image: localhost/polymetis:latest
         state: quadlet
-        quadlet_file_mode: '0640'
         network: host
         cap_add:
           - SYS_NICE
@@ -178,14 +182,19 @@
             WantedBy=multi-user.target
 
       loop: "{{ droid_units }}"
+      register: droid_quadlets
 
 
+    # only bounce a service when its quadlet or the image actually
+    # changed; otherwise just make sure it is running
     - name: Start the polymetis services
       ansible.builtin.systemd_service:
-        name: "{{ item.name }}.service"
-        state: restarted
+        name: "{{ item.item.name }}.service"
+        state: "{{ 'restarted' if (item.changed or polymetis_image.changed) else 'started' }}"
         daemon_reload: true
-      loop: "{{ droid_units }}"
+      loop: "{{ droid_quadlets.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
   handlers:
     - name: reboot system

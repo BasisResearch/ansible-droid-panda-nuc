@@ -54,6 +54,9 @@ The playbook will build a docker image, so it'll take a while for the build to f
 ## Validating the setup
 The validation setup doesn't include the full details about turning on the robot and unlocking it. For more detailed instructions, refer to the notion documents.
 
+### Making sure the realtime kernel is running
+The playbook might fail to switch to the realtime kernel as the default. To see if the realtime kernel is running, run `uname -a` and see if `PREEMPT_RT` is part of the output. If not, refer to [RHEL's official documentation](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_real_time/10/html/installing_rhel_for_real_time/specifying-the-rhel-kernel-to-run) to configure the default kernel.
+
 ### Checking for listened ports
 SSH into the machine and run `ss -tulpn`. You should be able to see the port `4242` being listened. If the robot is turned on, you should be able to see ports `50051` and `50052` as well.
 
