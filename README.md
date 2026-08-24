@@ -1,77 +1,70 @@
 # Ansible playbook for droid NUC
-The repository contains the ansible playbook that sets up polymetis on an NUC so it can be used to control the robot. It can be rerun to pull from the latest [droid](https://github.com/BasisResearch/droid) repo, rebuild the image, and restart the containers. The playbook assumes that the host runs AlmaLinux 10. It should be compatible with any RHEL and RockyLinux as well. The security support of AlmaLinux 10 should last until May 31, 2035 so you don't need to update unless you want to use a newer, faster kernel.
+This repository contains the Ansible playbook that sets up polymetis on a NUC so it can be used to control the robot. It can be rerun to pull the latest [droid](https://github.com/BasisResearch/droid) repo, rebuild the image, and restart the containers (services are only restarted when something actually changed). The playbook assumes the host runs AlmaLinux 10; it should also work on RHEL 10 and Rocky Linux 10. AlmaLinux 10 has security support until May 31, 2035, so you don't need to upgrade unless you want a newer, faster kernel.
 
 ## Preparing the machine
 
 ### Installing the operating system
-Before you run the playbook, you need to first install the operating system. To do that, go to [Almalinux](https://almalinux.org/)'s official site and download an ISO image for AlmaLinux 10. There are multiple image options. At the time of the writing, you can choose a full-sized DVD, a small Boot image, or a Minimal image. I recommend either downloading the DVD or Boot image.
+Download an AlmaLinux 10 ISO from the [official site](https://almalinux.org/) — the DVD or the Boot image are both fine — and install it. The installation should be straightforward: you can mostly keep clicking next. If there's an existing Windows installation on the NUC, wipe it completely and reuse the space.
 
-The installation should be straightforward. You should be able to just keep clicking next. If there's an existing Windows installation on the NUC, simply wipe it completely and reuse the space for the Linux installation.
+For network access, this guide assumes you use WiFi for Internet and reserve the ethernet port for communication with the robot. (It's possible to do everything through the ethernet port, but that requires a slightly more complicated network setup, which I won't go over.)
 
-For the network access, you could connect to an ethernet cable to a NUC, but for this guide, I'll assume that you are using wireless access for Internet and reserving the ethernet port for communication with the robot. (It's possible to do everything through the ethernet port, but it'll require slightly more complicated network setup, which I won't go over)
+The installer will prompt you to create a user in the `wheel` group, which lets you run `sudo`. The root account is locked by default, which is fine to keep as is.
 
-By default, the AlmaLinux installer will prompt you to create a user that lives in the `wheel` group, which lets you run `sudo` when you logged in as the user. The root user will be locked, which is fine to keep as is.
+### Configuring ssh access for Ansible
+Ansible is a tool that automates configuration. You install it on your laptop, set up ssh access on the NUC, and the Ansible runtime sshes into the NUC and performs the configuration specified in `playbook.yaml`. For this section, connect the NUC to a monitor and keyboard.
 
-
-### Configuring ssh accesss for ansible
-Ansible is a tool that automates configuration. You install it on your laptop, setup ssh access on the NUC, and then the ansible runtime will ssh into the NUC machine for you and perform the configurations specified in `playbook.yaml`. For this section, make sure your NUC is connected to an external monitor and keyboard.
-Good news is that `ssh` is installed by default on AlmaLinux, but you need to make the NUC's IP reachable from your laptop for it to work.
-
-First, you want your admin account to be able to run `sudo` without a password. To do so, run `visudo` (possibly with `sudo`) and then add the following line after replacing `USER` with your user name, which you can retrieve with `whoami`:
+First, let your admin account run `sudo` without a password: run `sudo visudo` and add the following line, replacing `USER` with your user name (see `whoami`):
 ```
 USER ALL=(ALL:ALL) NOPASSWD: ALL
 ```
 
-
-Next, you want to make sure your laptop is on the same network as the NUC, so it can ssh into it. If your laptop and the NUC are on the same network, you might be able to `ssh` into the laptop directly. However, WiFi access points very often block communication between devices so it's likely not going to work. Also, since we need to configure the ethernet card to a local IP address to communicate with the robot anyways, we'll configure a local IP for the ethernet port and the laptop and use `ssh` on that local IP. I won't go into details, but you should manually configure the IP of the wired ethernet card to `172.16.0.2/24` and your own laptop's ethernet card (or external dongle) to `172.16.0.7/24` (or anything of the form 172.16.0.x where `x` is not `2`). After that, try `ssh YOUR-USER-NAME@172.16.0.2`. If that works, run the same command with `ssh` replaced by `ssh-copy-id` so you can later `ssh` into the machine without a password. Note that you might also want to set up `ssh-add` to cache your local `ssh` key so you don't have to type another passphrase to unlock it.
-
-If everything works, you should be able to `ssh` into the NUC without any passwords.
-
-### Configuring the firewall
-The `ssh` port should be opened by default so you don't need to do anything with the firewall. However, since the communication test script involves the robot controller sending an unsolicited packet, it's most convenient to set up the firewall so the subnet (`172.16.0.0/24`) is trusted and all traffic is let through.
-
-To do that, run `ip link show`, and find a device name that starts with `enp*`. On the Intel NUC, the device is named `enp89s0` but it might be something else if you buy a different brand of NUC or have a newer version of Linux. (The one that starts with `w` is likely the WLAN device that you should leave alone)
-
+Next, your laptop needs to reach the NUC over the network. WiFi access points very often block communication between devices, and the NUC's ethernet card needs a static local IP to talk to the robot anyway, so we use the wired link for ssh as well: manually configure the NUC's wired ethernet interface to `172.16.0.2/24` and your laptop's ethernet card (or dongle) to `172.16.0.7/24` (anything of the form `172.16.0.x` where `x` is not `2` or `4` works — `4` is the robot controller). Then try `ssh YOUR-USER-NAME@172.16.0.2`. Once that works, run the same command with `ssh` replaced by `ssh-copy-id` so you can log in without a password. You might also want to use `ssh-add` so you don't have to retype your key's passphrase.
 
 ## Running the ansible playbook
-Before you can run the ansible playbook, create a file named `inventory.ini` in the project root with the following content.
+Create a file named `inventory.ini` in the project root, replacing `USERNAME` with your user name on the NUC:
 ```ini
 [nuc]
 172.16.0.2 ansible_user=USERNAME
 ```
-Replace USERNAME with your user name. The file specifies the NUC's IP address (attached to the ethernet port), and the user you want to run as on the remote machine.
 
-Next, turned on the NUC, and connected your laptop to the NUC, and run `ping 172.16.0.2` to make sure your machine can talk to the NUC. Next, run `uv sync` to install ansible, and run `uv run ansible-playbook -i inventory.ini playbook.yaml` to actually configure the NUC. The script may fail due to temporary networking issues. If that happens, simply rerun the previous command and see if it resolves. If not, create an issue, post the error messages, and ping me.
+Turn on the NUC, connect your laptop, and run `ping 172.16.0.2` to make sure the two machines can talk. Then run `uv sync` to install Ansible, and run
+```
+uv run ansible-playbook playbook.yaml
+```
+to configure the NUC. The first run builds a container image, so it will take a while. If the playbook fails due to a transient network issue, simply rerun it. If the failure persists, create an issue with the error messages and ping me at `yiyun@basis.ai`.
 
-The playbook will build a docker image, so it'll take a while for the build to finish.
+## Updating the docker image
+If you ever make changes to the `docker` branch of the Basis Droid fork, you can make the change available on the NUC by rerunning `uv run ansible-playbook playbook.yaml`. It'll automatically pull the latest commit and build an up-to-date image.
 
+Note: You should never make any changes to the checked out repo `/var/lib/droid` on NUC manually. There's nothing morally wrong with doing that, but it's better practice to keep the changes visible as commits and apply them wholesale on the NUC through the ansible automation script.
 
 ## Validating the setup
-The validation setup doesn't include the full details about turning on the robot and unlocking it. For more detailed instructions, refer to the notion documents.
+This section doesn't cover turning on and unlocking the robot. For detailed instructions, refer to the Notion documents. Note that the NUC now works as an appliance in the sense that you probably never need to ssh into it if it works properly. If the robot settings change and the robot arm and gripper control process crash, the service is configured to autostart after a few seconds. You only need to log in to validate the setup
 
 ### Making sure the realtime kernel is running
-The playbook might fail to switch to the realtime kernel as the default. To see if the realtime kernel is running, run `uname -a` and see if `PREEMPT_RT` is part of the output. If not, refer to [RHEL's official documentation](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_real_time/10/html/installing_rhel_for_real_time/specifying-the-rhel-kernel-to-run) to configure the default kernel.
+The playbook might fail to make the realtime kernel the default. Run `uname -a` and check that `PREEMPT_RT` appears in the output. If not, refer to [RHEL's official documentation](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_real_time/10/html/installing_rhel_for_real_time/specifying-the-rhel-kernel-to-run) to configure the default kernel.
 
 ### Checking for listened ports
-SSH into the machine and run `ss -tulpn`. You should be able to see the port `4242` being listened. If the robot is turned on, you should be able to see ports `50051` and `50052` as well.
-
+SSH into the NUC and run `ss -tulpn`. Port `4242` should be listening; with the robot turned on, ports `50051` and `50052` should appear as well.
 
 ### Communication test
-Before you run the communication test, run `sudo systemctl stop droid-robot droid-gripper` to stop the robot arm and gripper instance.
-Turn on the robot, and then run the following command on the NUC:
+First stop the arm and gripper services: `sudo systemctl stop droid-robot droid-gripper`. Turn on the robot, then run the following on the NUC:
 ```
 sudo podman exec -it polymetis /app/droid/fairo/polymetis/polymetis/src/clients/franka_panda_client/third_party/libfranka/build/examples/communication_test 172.16.0.4
 ```
-Replace `172.16.0.4` with the actual robot controller IP address if you changed it through the controller GUI interface.
+Replace `172.16.0.4` with the actual controller IP if you changed it through the controller's GUI. I was able to get 5-20ish dropped packets per run with close to 98% to 99% success rate of executing commands. If too many packets get dropped, the communication test will complain.
 
+Once you are done with the communication test, make sure that you restart both `droid-robot` and `droid-gripper` for more in-depth tests:
+```sh
+sudo systemctl start droid-robot droid-gripper
+```
 
 ### Droid test
-This is a more thorough test that drives the robot arm and gripper through the droid library. You can do this either on the NUC or on the laptop. The latter is recommended as in a realistic workflow you would talk to the NUC remotely from a beefier machine that's capable of learning and perception. Make sure you turn on the robot and the
+This is a more thorough test that drives the robot arm and gripper through the droid library. You can run it on the NUC or on your laptop; the latter is recommended, since in a realistic workflow you talk to the NUC remotely from a beefier machine that handles learning and perception. Make sure the robot is turned on and the NUC services are running.
 
-On your laptop, clone [droid](https://github.com/BasisResearch/droid) and check out the `docker` branch. First, enter the repo root and run `uv sync`. Next, create a file with the following content.
-```
+On your laptop, clone [droid](https://github.com/BasisResearch/droid), check out the `docker` branch, and run `uv sync --extra dm-robotics` in the repo root. Then save the following as `test.py`:
+```python
 """Move the Franka Panda to the DROID home (reset) pose via the NUC server."""
-import argparse
 import numpy as np
 import time
 
@@ -109,4 +102,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-Save the script as `test.py` and then run `uv run python test.py`. If everything works correctly, the gripper should first open and then close while moving to its home position.
+Run it with `uv run python test.py`. If everything works, the gripper opens and then closes while the arm moves to its home position.
+
+## Debugging
+The polymetis server (`polymetis`), the robot arm (`droid-robot`), and the gripper control (`droid-gripper`) each run as their own services. You can, for example, run `systemctl status polymetis` to query the status of the polymetis server. You can run `journalctl -u polymetis -u droid-robot -u droid-gripper -f` to follow the live status of all three services, and you can remove the `-u SERVICE` for the service that you are not interested in. You can also remove the `-f` to see the complete journal, including the past runs. If you append `--invocation=0`, you'll be able to view only the logs from the most recent invocations.
