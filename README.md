@@ -1,6 +1,8 @@
 # Ansible playbook for droid NUC
 This repository contains the Ansible playbook that sets up polymetis on a NUC so it can be used to control the robot. It can be rerun to pull the latest [droid](https://github.com/BasisResearch/droid) repo, rebuild the image, and restart the containers (services are only restarted when something actually changed). The playbook assumes the host runs AlmaLinux 10; it should also work on RHEL 10 and Rocky Linux 10. AlmaLinux 10 has security support until May 31, 2035, so you don't need to upgrade unless you want a newer, faster kernel.
 
+The ansible playbook has been tested on a freshly installed AlmaLinux 10 VM and an NUC with 8 cores.
+
 ## Preparing the machine
 
 ### Installing the operating system

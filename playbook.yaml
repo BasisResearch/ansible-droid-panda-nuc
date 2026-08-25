@@ -48,6 +48,9 @@
         state: present
       notify: reboot system
 
+    - name: Run pending reboot handlers now
+      ansible.builtin.meta: flush_handlers
+
     - name: Enable tuned
       service:
         name: tuned
@@ -72,9 +75,6 @@
       command: tuned-adm profile realtime
       when: "'realtime' not in tuned_active.stdout or tuned_variables.changed"
       notify: reboot system
-
-    - name: Run pending reboot handlers now
-      ansible.builtin.meta: flush_handlers
 
     - name: Configure subordinate UIDs for user
       ansible.builtin.lineinfile:
